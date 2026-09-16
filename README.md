@@ -1,6 +1,4 @@
 # TR pathogenicity visualizer
-
-Comparing Fold change and Z score to SD
 ## generated the visualizer with claude
 ## Setup
 
@@ -28,4 +26,3 @@ still see any widget-related error, updating ipywidgets and restarting the kerne
   https://github.com/dashnowlab/STRchive 
 - `current_view.csv` — written by the notebook's last cell, whatever is currently
   selected by the widgets.
-
