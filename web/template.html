@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tandem-repeat pathogenicity visualizer</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<style>
+  :root {
+    --ink: #2b2a28; --muted: #6b6a66; --line: #e3e2dd; --panel: #fafaf8; --accent: #33415c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; color: var(--ink); background: #fff;
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 1060px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { font-size: 1.75rem; margin: 0 0 6px; line-height: 1.25; }
+  h2 { font-size: 1.25rem; margin: 0 0 4px; }
+  .lede { color: var(--muted); margin: 0 0 18px; max-width: 760px; }
+  .howto { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: .9rem; color: var(--muted);
+           margin: 0 0 26px; padding: 0; list-style: none; }
+  .howto li::before { content: "› "; color: var(--accent); font-weight: 700; }
+  section.card { border: 1px solid var(--line); border-radius: 12px; padding: 20px 20px 16px;
+                 margin-bottom: 28px; }
+  .sub { color: var(--muted); font-size: .92rem; margin: 0 0 14px; max-width: 800px; }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px;
+              padding: 12px 14px; background: var(--panel); border-radius: 8px; margin-bottom: 8px; }
+  .controls label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-size: .95rem; }
+  .controls select { font: inherit; font-size: .95rem; padding: 5px 8px; border-radius: 6px;
+                     border: 1px solid #c9c8c2; background: #fff; }
+  .controls input[type=checkbox] { width: 17px; height: 17px; accent-color: var(--accent); }
+  .group-label { font-weight: 600; font-size: .9rem; color: var(--muted); }
+  .note { font-size: .82rem; color: var(--muted); font-style: italic; }
+  .plot { width: 100%; height: 640px; }
+  .detail {
+    border: 6px solid #d8d7d2; border-radius: 8px; padding: 12px 16px; margin-top: 6px;
+    min-height: 120px; max-height: 280px; overflow-y: auto; background: var(--panel);
+    font: 13.5px/1.5 Consolas, "SFMono-Regular", Menlo, monospace;
+  }
+  .detail ul { margin: 4px 0 0; padding-left: 18px; }
+  .detail.empty { color: var(--muted); font-family: inherit; display: flex; align-items: center; }
+  .row-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
+  button {
+    font: inherit; font-size: .9rem; padding: 7px 14px; border-radius: 7px; cursor: pointer;
+    border: 1px solid var(--accent); background: var(--accent); color: #fff;
+  }
+  button:hover { filter: brightness(1.15); }
+  .empty-msg { color: var(--muted); padding: 40px 0; text-align: center; }
+  details { border-top: 1px solid var(--line); padding: 14px 0; }
+  details summary { cursor: pointer; font-weight: 600; font-size: 1.05rem; }
+  details ul { padding-left: 20px; }
+  details li { margin-bottom: 6px; }
+  footer { color: var(--muted); font-size: .85rem; border-top: 1px solid var(--line); padding-top: 14px; }
+  a { color: #2a5db0; }
+  code { font-size: .88em; background: #f1f0ec; padding: 1px 4px; border-radius: 4px; }
+  @media (max-width: 640px) { .plot { height: 480px; } main { padding: 18px 12px 40px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tandem-repeat pathogenicity visualizer</h1>
+  <p class="lede">
+    For known disease-associated tandem repeats: how far does each locus actually stretch in an
+    ordinary population sample (max observed ÷ reference repeat count), and how much does it vary
+    between people (population SD)? Background loci show how comparable non-disease repeats behave.
+  </p>
+  <ul class="howto">
+    <li><b>Click</b> a point for full details</li>
+    <li><b>Drag</b> a box to zoom, <b>scroll</b> to zoom</li>
+    <li><b>Double-click</b> to reset</li>
+    <li>Click legend items to hide/show them</li>
+  </ul>
+
+  <!-- ===================== Main visualizer ===================== -->
+  <section class="card">
+    <h2>1. One cohort at a time</h2>
+    <p class="sub">Color = broad region class of disease loci (gray = background sample).
+      Shape = fine-grained region: ● CDS, ▲ 5′ UTR, ▼ 3′ UTR, ■ intron, ◆ isoform-ambiguous exon.</p>
+    <div class="controls">
+      <label>Population source
+        <select id="main-cohort"></select>
+      </label>
+      <label><input type="checkbox" id="main-bg"> Show background (proportionate)</label>
+      <span class="note">VWA1 (a repeat contraction, not an expansion) is always excluded.</span>
+    </div>
+    <div id="main-plot" class="plot"></div>
+    <div id="main-detail" class="detail empty">Click a point above for details.</div>
+    <div class="row-actions">
+      <button id="main-csv" type="button">Download this view as CSV</button>
+      <span class="note" id="main-count"></span>
+    </div>
+  </section>
+
+  <!-- ===================== Cross-population ===================== -->
+  <section class="card">
+    <h2>2. Compare cohorts on the same axes</h2>
+    <p class="sub">Each checked cohort gets its own color and shape (● HPRC256, ▲ TenK10K, ■ AoU1027),
+      so the same locus appears once per cohort. Background points are gray, in their cohort's shape.
+      Try comparing HPRC256 outliers against their 99th percentile in the detail box.</p>
+    <div class="controls">
+      <span class="group-label">Cohorts:</span>
+      <span id="cross-cohorts" style="display:contents"></span>
+      <label><input type="checkbox" id="cross-bg"> Show background (proportionate)</label>
+    </div>
+    <div id="cross-plot" class="plot"></div>
+    <div id="cross-detail" class="detail empty">Click a point above for details.</div>
+  </section>
+
+  <!-- ===================== About ===================== -->
+  <details>
+    <summary>About the data</summary>
+    <p><b>Tandem repeats</b> are short DNA motifs (here 3–24 bp) repeated back-to-back. Most people carry
+      a fairly stable number of copies at each locus; at a defined set of loci, a large expansion causes
+      disease.</p>
+    <ul>
+      <li><a href="https://strchive.org">STRchive</a> (Dashnow lab): disease loci with pathogenic thresholds,
+        evidence tier, and inheritance. Only loci with evidence <b>Moderate or better</b> are included
+        (52 of 63; 51 after excluding VWA1).</li>
+      <li><a href="https://github.com/broadinstitute/trexplorer-catalog">TRExplorer v2.0</a>: genome-wide
+        repeat-length statistics from population cohorts:
+        <b>HPRC256</b> (long-read assemblies, 256 individuals), <b>TenK10K</b> (short-read, larger, more
+        prone to length errors), and <b>AoU1027</b> (long-read, <i>All of Us</i>).</li>
+      <li><b>Background sample</b>: non-disease loci drawn from the same catalog in the same
+        CDS/UTR/intron/exon proportions and motif lengths as the disease set.</li>
+      <li><b>Fold-change</b> = max repeat count observed in the cohort ÷ GRCh38 reference repeat count.
+        It's the only scale disease and background loci share, since background loci have no
+        pathogenic threshold.</li>
+    </ul>
+  </details>
+  <details>
+    <summary>Caveats</summary>
+    <ul>
+      <li><b>No pooling across cohorts.</b> Combining cohorts would give loci covered by more or larger
+        cohorts more chances to look extreme, independent of biology.</li>
+      <li><b>Max observed is not the pathogenic threshold.</b> A rare full expansion essentially never
+        shows up in a few hundred to ~1,000 people, so max observed at disease loci is usually far below
+        <code>pathogenic_min</code>. That's expected. The detail box shows both.</li>
+      <li><b>Raw maximum is outlier-sensitive.</b> For example, DAB1 in HPRC256 has a median of 13 repeats,
+        a 99th percentile of 226, and a maximum of 1,003, all from a single outlier haplotype.</li>
+      <li><b>The background is structurally matched, not polymorphism-matched.</b> Disease loci were partly
+        discovered <i>because</i> they vary.</li>
+      <li><b>AoU1027 gaps are real.</b> Several hard-to-genotype GC-rich polyalanine loci (FOXL2, HOXA13,
+        ARX, ZIC2, SOX3, TBX1, PHOX2B, RUNX2, LRP12) have no AoU1027 data anywhere in the catalog. They drop
+        out when AoU1027 is selected.</li>
+      <li>C9orf72's STRchive <code>pathogenic_min</code> (31) is the low end of a gray zone. Most clinical
+        labs only call clear pathogenicity at ≥60–100+ repeats.</li>
+    </ul>
+  </details>
+
+  <footer>
+    Built from <a href="https://github.com/nsheffels/TR_visualizer">github.com/nsheffels/TR_visualizer</a>.
+    The Jupyter notebook there has the full analysis code.
+  </footer>
+</main>
+
+<script>
+const DATA = /*__TR_DATA__*/null;
+
+// ---------- constants (mirroring the notebook) ----------
+const VWA1_GENE = "VWA1";
+const COHORTS = DATA.cohorts;
+const COARSE_COLORS = { coding: "#2a78d6", noncoding: "#eb6834", ambiguous: "#1baf7a" };
+const COARSE_LABELS = { coding: "Coding (CDS)", noncoding: "Noncoding (UTR / intron)",
+                        ambiguous: "Ambiguous / isoform-dependent" };
+const FINE_SYMBOLS = { "CDS": "circle", "5' UTR": "triangle-up", "3' UTR": "triangle-down",
+                       "intron": "square", "exon": "diamond" };
+const BACKGROUND_COLOR = "#6b6b66";
+const DATASET_OPACITY = { disease: 1.0, matched_background: 0.8 };
+const DATASET_SIZE = { disease: 11, matched_background: 9 };
+const DATASET_LABELS = { disease: "Disease loci", matched_background: "Background (proportionate)" };
+const COHORT_COLORS = { HPRC256: "#7b4fa6", TenK10K: "#0e7c86", AoU1027: "#c98a1b" };
+const COHORT_SYMBOLS = { HPRC256: "circle", TenK10K: "triangle-up", AoU1027: "square" };
+
+const BASE = DATA.loci.filter(r => r.gene !== VWA1_GENE);
+
+// ---------- helpers ----------
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const num = v => (v === null || v === undefined || v === "" || isNaN(Number(v))) ? null : Number(v);
+const fmt = (v, d) => v === null ? "n/a" : Number(v).toFixed(d);
+
+function completenessLabel(cohort) {
+  const parts = ["disease", "matched_background"].map(ds => {
+    const sub = BASE.filter(r => r.dataset === ds);
+    const n = sub.filter(r => cohort in (r.cohort_stats || {})).length;
+    return `${n}/${sub.length}`;
+  });
+  return `${cohort}  (disease ${parts[0]} · background ${parts[1]})`;
+}
+
+// Same logic as the notebook's compute_cohort_rows()
+function cohortRows(datasets, cohort) {
+  const out = [];
+  for (const r of BASE) {
+    if (!datasets.includes(r.dataset)) continue;
+    const s = (r.cohort_stats || {})[cohort];
+    if (!s) continue;
+    const sd = num(s.sd), max = num(s.max), ref = num(r.ref_repeats);
+    if (sd === null || max === null || !(ref > 0)) continue;
+    out.push({ ...r, cohort, pop_sd: sd, pop_n: num(s.n), pop_max: max, pop_p99: num(s.p99),
+               basis_value: max, fold_change: max / ref });
+  }
+  return out;
+}
+
+function detailHTML(r, showCohortLine) {
+  const header = `<b>${esc(r.gene)}</b> (${DATASET_LABELS[r.dataset]})` +
+                 (r.disease ? ` — ${esc(r.disease)}` : "");
+  const items = [];
+  if (showCohortLine) items.push(`cohort: <b>${esc(r.cohort)}</b>`);
+  items.push(
+    `region: ${esc(r.region_strchive)} (${esc(r.region_class)}, ${esc(r.region_catalog)})`,
+    `reference repeats: ${esc(r.ref_repeats)}`,
+    `max observed: ${fmt(r.basis_value, 0)} (99th percentile: ${fmt(r.pop_p99, 0)})`,
+    `pathogenic threshold: ${fmt(num(r.pathogenic_min), 0)}`,
+    `population SD: ${fmt(r.pop_sd, 2)} (n=${r.pop_n === null ? "n/a" : Math.round(r.pop_n)}` +
+      (showCohortLine ? ")" : `, ${esc(r.cohort)})`),
+    `fold-change: ${fmt(r.fold_change, 2)}`,
+    `evidence tier: ${esc(r.evidence ?? "n/a")}`,
+    `inheritance: ${esc((r.inheritance || []).join(",") || "n/a")}`,
+  );
+  return header + "<ul>" + items.map(i => `<li>${i}</li>`).join("") + "</ul>";
+}
+
+function trace(rows, name, color, symbols, ds, showCohortLine, markerColor) {
+  return {
+    type: "scatter", mode: "markers", name,
+    x: rows.map(r => r.pop_sd), y: rows.map(r => r.fold_change),
+    marker: { color: markerColor || color, size: DATASET_SIZE[ds], symbol: symbols,
+              opacity: DATASET_OPACITY[ds], line: { color: "white", width: 1 } },
+    customdata: rows.map(r => [r.gene, detailHTML(r, showCohortLine), color]),
+    hovertemplate: "<b>%{customdata[0]}</b><extra></extra>",
+  };
+}
+
+function layout(title) {
+  return {
+    template: "plotly_white", dragmode: "zoom", autosize: true,
+    title: { text: title, font: { size: 15 } },
+    xaxis: { title: { text: "Population SD of repeat copy number (repeat units)" }, zeroline: false },
+    yaxis: { title: { text: "Fold-change (max observed ÷ reference)" }, type: "log", dtick: 1 },
+    legend: { orientation: "h", yanchor: "top", y: -0.14, xanchor: "left", x: 0 },
+    margin: { t: 50, r: 30, l: 70, b: 110 },
+    plot_bgcolor: "#fff", paper_bgcolor: "#fff",
+  };
+}
+
+const CONFIG = { scrollZoom: true, displaylogo: false, responsive: true,
+                 modeBarButtonsToRemove: ["lasso2d", "select2d"] };
+const wired = {};
+
+function resetDetail(detailId) {
+  const box = document.getElementById(detailId);
+  box.className = "detail empty"; box.style.borderColor = "";
+  box.textContent = "Click a point above for details.";
+}
+
+function draw(plotId, detailId, traces, title) {
+  resetDetail(detailId);
+  const el = document.getElementById(plotId);
+  Plotly.react(el, traces, layout(title), CONFIG);
+  if (!wired[plotId]) {
+    el.on("plotly_click", ev => {
+      const pt = ev && ev.points && ev.points[0];
+      if (!pt || !pt.customdata) return;
+      const box = document.getElementById(detailId);
+      box.classList.remove("empty");
+      box.innerHTML = pt.customdata[1];
+      box.style.borderColor = pt.customdata[2];
+    });
+    wired[plotId] = true;
+  }
+}
+
+// ---------- main plot ----------
+let mainRows = [];
+function updateMain() {
+  const cohort = document.getElementById("main-cohort").value;
+  const datasets = ["disease"];
+  if (document.getElementById("main-bg").checked) datasets.push("matched_background");
+  mainRows = cohortRows(datasets, cohort);
+
+  const traces = [];
+  for (const cls of ["noncoding", "coding", "ambiguous"]) {
+    const rows = mainRows.filter(r => r.dataset === "disease" && r.region_class === cls);
+    if (!rows.length) continue;
+    traces.push(trace(rows, `Disease – ${COARSE_LABELS[cls]}`, COARSE_COLORS[cls],
+      rows.map(r => FINE_SYMBOLS[r.region_catalog] || "circle"), "disease", false));
+  }
+  const bg = mainRows.filter(r => r.dataset === "matched_background");
+  if (bg.length) traces.push(trace(bg, DATASET_LABELS.matched_background, BACKGROUND_COLOR,
+    bg.map(r => FINE_SYMBOLS[r.region_catalog] || "circle"), "matched_background", false));
+
+  draw("main-plot", "main-detail", traces,
+       `Population spread × fold change from reference — ${cohort} · max observed`);
+  const nd = mainRows.filter(r => r.dataset === "disease").length;
+  document.getElementById("main-count").textContent =
+    `${nd} disease loci` + (bg.length ? ` + ${bg.length} background loci` : "") + ` shown for ${cohort}.`;
+}
+
+// ---------- cross-population plot ----------
+function updateCross() {
+  const cohorts = COHORTS.filter(c => document.getElementById(`cross-${c}`).checked);
+  const datasets = ["disease"];
+  if (document.getElementById("cross-bg").checked) datasets.push("matched_background");
+  const el = document.getElementById("cross-plot");
+  if (!cohorts.length) {
+    Plotly.purge(el); delete wired["cross-plot"];
+    el.innerHTML = '<p class="empty-msg">Check at least one cohort above.</p>';
+    return;
+  }
+  if (el.querySelector(".empty-msg")) el.innerHTML = "";
+  const rows = cohorts.flatMap(c => cohortRows(datasets, c));
+  const traces = [];
+  for (const c of cohorts) {
+    const d = rows.filter(r => r.dataset === "disease" && r.cohort === c);
+    if (d.length) traces.push(trace(d, `Disease – ${c}`, COHORT_COLORS[c], COHORT_SYMBOLS[c], "disease", true));
+  }
+  for (const c of cohorts) {
+    const b = rows.filter(r => r.dataset === "matched_background" && r.cohort === c);
+    if (b.length) traces.push(trace(b, `Background – ${c}`, COHORT_COLORS[c], COHORT_SYMBOLS[c],
+                                    "matched_background", true, "grey"));
+  }
+  draw("cross-plot", "cross-detail", traces, "Population spread × fold change — cohorts compared · max observed");
+}
+
+// ---------- CSV export (same columns as the notebook's current_view.csv) ----------
+const CSV_COLS = ["dataset", "gene", "disease", "disease_id", "locus_id", "motif", "motif_len_bp",
+  "ref_repeats", "region_catalog", "region_class", "region_strchive", "inheritance", "evidence",
+  "benign_max", "intermediate_min", "intermediate_max", "pathogenic_min", "pathogenic_max",
+  "pop_sd", "pop_n", "pop_max", "pop_p99", "basis_value", "fold_change", "cohort", "population_source"];
+
+function downloadCSV() {
+  const cohort = document.getElementById("main-cohort").value;
+  const rows = [...mainRows].sort((a, b) =>
+    a.dataset.localeCompare(b.dataset) || String(a.gene).localeCompare(String(b.gene)));
+  const cell = v => {
+    if (v === null || v === undefined) return "";
+    if (Array.isArray(v)) v = v.join(", ");
+    v = String(v);
+    return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  };
+  const lines = [CSV_COLS.join(",")].concat(
+    rows.map(r => CSV_COLS.map(k => cell(k === "population_source" ? cohort : r[k])).join(",")));
+  const blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `TR_current_view_${cohort}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ---------- wire up ----------
+const sel = document.getElementById("main-cohort");
+for (const c of COHORTS) {
+  const o = document.createElement("option");
+  o.value = c; o.textContent = completenessLabel(c);
+  if (c === "HPRC256") o.selected = true;
+  sel.appendChild(o);
+}
+const crossBox = document.getElementById("cross-cohorts");
+for (const c of COHORTS) {
+  const lab = document.createElement("label");
+  lab.innerHTML = `<input type="checkbox" id="cross-${c}" ${c === "HPRC256" ? "checked" : ""}> ${esc(completenessLabel(c))}`;
+  crossBox.appendChild(lab);
+  lab.querySelector("input").addEventListener("change", updateCross);
+}
+sel.addEventListener("change", updateMain);
+document.getElementById("main-bg").addEventListener("change", updateMain);
+document.getElementById("cross-bg").addEventListener("change", updateCross);
+document.getElementById("main-csv").addEventListener("click", downloadCSV);
+
+updateMain();
+updateCross();
+</script>
+</body>
+</html>
