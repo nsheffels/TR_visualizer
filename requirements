@@ -1,6 +1,0 @@
-pandas
-numpy
-scipy
-plotly>=5.18
-ipywidgets>=7.6
-notebook
