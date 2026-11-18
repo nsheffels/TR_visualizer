@@ -1,0 +1,5 @@
+pandas
+numpy
+plotly>=5.24
+ipywidgets>=8
+notebook
